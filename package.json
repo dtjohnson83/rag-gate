@@ -1,0 +1,31 @@
+{
+  "name": "rag-gate",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "TypeSafe-powered RAG chunk gatekeeper. Score and filter retrieved chunks before they reach your LLM.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "test": "vitest run",
+    "demo": "tsx scripts/demo.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.6",
+    "@typesafe-ai/sdk": "^0.6.0",
+    "dotenv": "^17.2.2",
+    "hono": "^4.9.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.6",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}
