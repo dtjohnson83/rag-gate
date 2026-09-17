@@ -2,6 +2,8 @@
 
 Standalone TypeSafe product. Score and filter RAG chunks before they hit your LLM: keep what’s relevant, drop junk and injection.
 
+This product is MIT open source.
+
 ## One-liner
 
 Score and filter RAG chunks before they hit your LLM: keep what’s relevant, drop junk and injection.

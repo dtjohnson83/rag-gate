@@ -2,6 +2,7 @@
   "name": "rag-gate",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "TypeSafe-powered RAG chunk gatekeeper. Score and filter retrieved chunks before they reach your LLM.",
   "type": "module",
   "engines": {

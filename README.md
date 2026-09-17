@@ -1,45 +1,39 @@
 # rag-gate
 
-Standalone TypeSafe-powered API that scores retrieved RAG chunks and drops the ones that should not reach your LLM.
+Retrieved RAG chunks are ranked by wording, so junk, near-misses, and prompt-injection still reach your LLM. **rag-gate** is a small TypeSafe-powered API that scores each chunk you already retrieved, keeps what helps answer the query, and drops the rest.
 
-The client already retrieved `chunks[]`. This service scores each chunk with TypeSafe System One, sorts by relevance, and returns **kept** + **dropped** + **usage**.
+This is not a vector database and it does not retrieve documents. You send `query` + `chunks[]`; it returns **kept**, **dropped**, and **usage**.
 
-## Setup
+Licensed under the [MIT License](LICENSE).
+
+## Quick start
 
 ```bash
 npm install
 cp .env.example .env
 ```
 
-Set `RAG_GATE_API_KEY` in `.env`. For a live TypeSafe run, also set `TYPESAFE_API_KEY`. Never commit those values.
+`.env.example` ships with empty secrets. Put real keys only in a local `.env` and never commit it.
 
 ```bash
-npm run dev          # tsx watch, http://127.0.0.1:3000
-npm run build && npm start
-npm test             # mocked scorer, no TypeSafe key
+# no TypeSafe key required
 MOCK_TYPESAFE=1 npm run demo
 ```
 
-## Environment
+That prints kept and dropped chunks using a local heuristic. For live System One scoring, set `TYPESAFE_API_KEY` in `.env` (do not print or commit it), leave `MOCK_TYPESAFE` unset, and run:
 
-| Variable | Required | Purpose |
-|----------|----------|---------|
-| `RAG_GATE_API_KEY` | HTTP server | Clients send `Authorization: Bearer <RAG_GATE_API_KEY>` |
-| `TYPESAFE_API_KEY` | Live scoring | TypeSafe System One. Read by `@typesafe-ai/sdk` |
-| `MOCK_TYPESAFE` | Demo / local | `1` scores chunks with a local heuristic (no TypeSafe calls) |
-| `PORT` | No | Listen port, default `3000` |
-| `TYPESAFE_BASE_URL` | No | SDK override |
-| `TYPESAFE_DEFAULT_MODEL` | No | SDK override. This repo never hard-codes a model id |
+```bash
+npm run dev
+```
 
-## API
+The HTTP server also requires `RAG_GATE_API_KEY` in `.env`. Clients send that value as a bearer token; the server holds `TYPESAFE_API_KEY` separately.
 
-### `GET /health`
+```bash
+npm test
+npm run build && npm start
+```
 
-No auth. `{ "ok": true, "service": "rag-gate" }`
-
-### `POST /v1/gate`
-
-Auth: `Authorization: Bearer <RAG_GATE_API_KEY>`.
+## `POST /v1/gate`
 
 ```bash
 curl -s http://127.0.0.1:3000/v1/gate \
@@ -61,6 +55,8 @@ curl -s http://127.0.0.1:3000/v1/gate \
   }'
 ```
 
+`GET /health` is unauthenticated and returns `{ "ok": true, "service": "rag-gate" }`.
+
 Response shape:
 
 ```json
@@ -77,27 +73,22 @@ Response shape:
 
 Drop reasons: `injection`, `low_relevance`, `over_top_k`.
 
-`options.minConfidence` is accepted and ignored in v0. TypeSafe **noul** answers are a probability, not a separate confidence score.
-
 ## Thresholds
 
-| Knob | Default | Rule |
-|------|---------|------|
-| `topK` | 8 | After sort + filters, keep at most this many |
-| `minRelevance` | 0.55 | Drop when `relevant` noul is below this |
-| `dropInjection` | true | When true, drop injection scores ≥ `injectionMax` |
-| `injectionMax` | 0.7 | Cookbook starting point for prompt-injection |
-| concurrency | 8 | Parallel TypeSafe calls (server-side, not a request field) |
+| Option | Default | Rule |
+|--------|---------|------|
+| `topK` | 8 | After sort and filters, keep at most this many chunks |
+| `minRelevance` | 0.55 | Drop when the `relevant` noul is below this |
+| `dropInjection` | true | When true, drop chunks whose injection noul is ≥ `injectionMax` |
+| `injectionMax` | 0.7 | Injection cutoff (TypeSafe RAG cookbook starting point) |
 
-Injection is checked first. Remaining candidates are sorted by `answers.relevant.noul` descending (id as a tie-break), then truncated to `topK`.
+Injection is checked first. Remaining candidates are sorted by `answers.relevant.noul` descending, then truncated to `topK`. Tune these on labeled query/chunk pairs.
 
-These numbers are a starting point. Tune them on labeled query/chunk pairs before locking them for customers.
+`options.minConfidence` is accepted and ignored in v0: TypeSafe noul answers are a probability, not a separate confidence score.
 
-## TypeSafe
+## Powered by TypeSafe
 
-- Docs: [https://docs.typesafe.ai](https://docs.typesafe.ai)
-- SDK: [`@typesafe-ai/sdk`](https://docs.typesafe.ai/sdk/javascript.md) (`TypeSafeClient`, helpers `noul` / `choice` / `score`)
-- Cookbook this product follows: [Classifying RAG passages](https://docs.typesafe.ai/cookbooks/classifying_rag_passages.md)
+Scoring uses [TypeSafe](https://docs.typesafe.ai) System One (`@typesafe-ai/sdk`, `TypeSafeClient`, helpers `noul` / `choice` / `score`). The routing pattern follows the [classifying RAG passages](https://docs.typesafe.ai/cookbooks/classifying_rag_passages.md) cookbook.
 
 Each chunk is one `systemOne` call against `{ query, chunk: { id, text } }`:
 
@@ -106,28 +97,25 @@ Each chunk is one `systemOne` call against `{ query, chunk: { id, text } }`:
 | `relevant` | noul | Does this chunk help answer the query? |
 | `injection` | noul | Prompt injection / instruction override? |
 
-Token usage is summed from `result.usage.input_tokens` and `result.usage.output_tokens`. The model is whatever the SDK default is — this service does not pass a model id.
+Usage is summed from `result.usage.input_tokens` and `result.usage.output_tokens`. The model is the SDK default; this repo does not invent model ids.
 
-### Live vs mock
+## What this is / is not
 
-```bash
-# Local heuristic, no TypeSafe key
-MOCK_TYPESAFE=1 npm run demo
-MOCK_TYPESAFE=1 RAG_GATE_API_KEY=dev-key npm run dev
-```
+**Is:** a gate between retrieval and generation. Score chunks, sort, drop junk and injection, return the rest.
 
-```bash
-# Live System One — requires a real TypeSafe key
-# https://docs.typesafe.ai
-TYPESAFE_API_KEY=... RAG_GATE_API_KEY=... npm run dev
-```
+**Is not:** a vector database, embedder, or BM25/search layer. The client already retrieved. Multi-tenant dashboards and streaming are also out of scope for v0.
 
-`MOCK_TYPESAFE=1` is lexical overlap plus a few injection phrases. Use it for tests and demos only.
+## Environment
 
-## Layout
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `RAG_GATE_API_KEY` | HTTP server | Bearer token your clients send |
+| `TYPESAFE_API_KEY` | Live scoring | TypeSafe System One |
+| `MOCK_TYPESAFE` | Demo / tests | `1` uses a local heuristic (no TypeSafe calls) |
+| `PORT` | No | Listen port, default `3000` |
 
-- `src/gate.ts` — score, sort, filter
-- `src/scorer.ts` — TypeSafe client + mock scorer
-- `src/app.ts` — Hono routes
-- `scripts/demo.ts` — prints kept/dropped under `MOCK_TYPESAFE=1`
-- `BRIEF.md` — product brief
+Never commit a filled `.env`. Never log or print API keys.
+
+## License
+
+[MIT](LICENSE) © 2026 Dan Johnson
